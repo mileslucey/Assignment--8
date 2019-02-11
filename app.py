@@ -1,4 +1,5 @@
 # PART 1 -- DEPENDENCIES AND SETUP
+
 import datetime as dt
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
@@ -23,27 +24,28 @@ Base.prepare(engine, reflect=True)
 Measurement = Base.classes.measurement
 Station = Base.classes.station
 
-# Create our session (link) from Python to the DB
+# Create session (link) to databse
 session = Session(engine)
 
 # PART 3 -- FLASK SETUP AND ROUTE CREATION
+
 # Flask setup
 app = Flask(__name__)
-
 # Flask routes
 @app.route("/")
+# intro/explanation
 def welcome():
     return (
         f"Welcome to the Hawaii weather API!<br/>"
         f"Pick from the following available routes:<br/>"
-        f"/api/v1.0/precipitation<br/>Converts query results to a Dictionary using date as the key and prcp as the value.<br/>"
-        f"/api/v1.0/stations<br/>Returns a JSON list of stations from the dataset.<br/>"
-        f"/api/v1.0/tobs<br/>Query for the dates and temperature observations from a year from the last datapoint. Returns JSON list of temperature observations from a year from the last data point.<br/>"
+        f"/api/v1.0/precipitation<br/>Returns a list of JSON representation of dictionary.<br/>"
+        f"/api/v1.0/stations<br/>Returns a list of stations from the dataset.<br/>"
+        f"/api/v1.0/tobs<br/>Returns a list of dates and temperature observations from dataset. Stations are included to avoid confusion as instructions don't specify a particular station.<br/>"
+        # instructions don't mention to pull in dates and temperatures for any specific stations, but here it is in the comments for the most popular station in case it's needed
         # f"/api/v1.0/mostobstobs<br/>Query for the dates and temperature observations from a year from the last datapoint for the station with most observations.<br/>"
-        f"/api/v1.0/temp/start/end<br/>Returns a JSON list of min, avg, and max temperatures for all dates between the start and end dates.<br/>"
+        f"/api/v1.0/temp/start/end<br/>Returns a list of min, avg, and max temperatures for all dates between the start and end dates.<br/>"
     )
-
-
+# precipitation route
 @app.route("/api/v1.0/precipitation")
 def precipitation():
     """Return the precipitation data for the last year"""
@@ -55,45 +57,38 @@ def precipitation():
     precipitation = session.query(Measurement.date, Measurement.prcp).\
 		filter(Measurement.date >=last_year, Measurement.date <=last_date).\
 		order_by(Measurement.date).all()
-
+	# formula for itemizing each item brought in from the query
     precip_dict = {date: prcp for date, prcp in precipitation}
     return jsonify(precip_dict)
 
-
+# stations route
 @app.route("/api/v1.0/stations")
 def stations():
     """Return a list of stations."""
-    # results = session.query(Station.station).all()
     results = session.query(Measurement.station).\
     	group_by(Measurement.station).all()
-    # Unravel results into a 1D array and convert to a list
+    # formula for itemizing each item brought in from the query
     stations = list(np.ravel(results))
     return jsonify(stations)
 
-
+# temperature observations route
 @app.route("/api/v1.0/tobs")
 def temp_monthly():
-    """Return the temperature observations (tobs) for previous year."""
+    """Return the temperature observations for previous year."""
     # last date in the dataset and year from last date calculations
     last_date = session.query(Measurement.date,Measurement.prcp).order_by(Measurement.date.desc()).first()[0]
     last_year = str(dt.datetime.strptime(last_date,"%Y-%m-%d") - dt.timedelta(days=365))
-
-    # Query the primary station for all tobs from the last year
-    # results = session.query(Measurement.tobs).\
-    #     filter(Measurement.station == 'USC00519281').\
-    #     filter(Measurement.date >= prev_year).all()
 
     last_year_tobs = session.query(Measurement.date, Measurement.station,Measurement.tobs).\
 		filter(Measurement.date >=last_year, Measurement.date <=last_date).\
 		order_by(Measurement.date,Measurement.station).all()
 
-    # Unravel results into a 1D array and convert to a list
+    # formula for itemizing each item brought in from the query
     temps = list(np.ravel(last_year_tobs))
-
-    # Return the results
     return jsonify(temps)
 
-@app.route("/api/v1.0/mostobstobs")
+# THIS WOULD BE THE CODE FOR THE ROUTE FOR THE MOST POPULAR STATION, BUT IT ISN'T ASKED FOR IN THE ASSIGNMENT
+# @app.route("/api/v1.0/mostobstobs")
 # def temp_monthly_most_obs():    
 #     # last date in the dataset and year from last date calculations
 #     last_date = session.query(Measurement.date,Measurement.prcp).order_by(Measurement.date.desc()).first()[0]
@@ -107,30 +102,28 @@ def temp_monthly():
 	
 # 	return jsonify(temps_most_obs)
 
+# min, avg, and max calculations for specific vacation dates path
 @app.route("/api/v1.0/temp/<start>")
 @app.route("/api/v1.0/temp/<start>/<end>")
 def stats(start=None, end=None):
-    """Return TMIN, TAVG, TMAX."""
+    """Returns min, avg, and max."""
 
     # Select statement
     select_stat = [func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
 
     if not end:
-        # calculate TMIN, TAVG, TMAX for dates greater than start
         results = session.query(*select_stat).\
             filter(Measurement.date >= start).all()
-        # Unravel results into a 1D array and convert to a list
+    # formula for itemizing each item brought in from the query
         temps = list(np.ravel(results))
         return jsonify(temps)
 
-    # calculate TMIN, TAVG, TMAX with start and stop
     results = session.query(*select_stat).\
         filter(Measurement.date >= start).\
         filter(Measurement.date <= end).all()
-    # Unravel results into a 1D array and convert to a list
+    # formula for itemizing each item brought in from the query
     temps = list(np.ravel(results))
     return jsonify(temps)
-
 
 if __name__ == '__main__':
     app.run()
